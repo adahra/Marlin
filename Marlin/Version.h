@@ -35,7 +35,11 @@
   /**
    * Marlin release version identifier
    */
+<<<<<<< HEAD
   #define SHORT_BUILD_VERSION "1.1.7"
+=======
+  #define SHORT_BUILD_VERSION "1.1.8"
+>>>>>>> ac3fab7a9680a880fd1b113be7e758c6dabb2a57
 
   /**
    * Verbose version identifier which should contain a reference to the location
@@ -48,7 +52,11 @@
    * here we define this default string as the date where the latest release
    * version was tagged.
    */
+<<<<<<< HEAD
   #define STRING_DISTRIBUTION_DATE "2017-12-15 12:00"
+=======
+  #define STRING_DISTRIBUTION_DATE "2017-12-25 12:00"
+>>>>>>> ac3fab7a9680a880fd1b113be7e758c6dabb2a57
 
   /**
    * Required minimum Configuration.h and Configuration_adv.h file versions.
