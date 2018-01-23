@@ -196,6 +196,9 @@ class Temperature {
       FORCE_INLINE static bool targetTooColdToExtrude(const uint8_t e) { UNUSED(e); return false; }
     #endif
 
+    FORCE_INLINE static bool hotEnoughToExtrude(const uint8_t e) { return !tooColdToExtrude(e); }
+    FORCE_INLINE static bool targetHotEnoughToExtrude(const uint8_t e) { return !targetTooColdToExtrude(e); }
+
   private:
 
     #if ENABLED(TEMP_SENSOR_1_AS_REDUNDANT)
@@ -453,7 +456,7 @@ class Temperature {
      * Perform auto-tuning for hotend or bed in response to M303
      */
     #if HAS_PID_HEATING
-      static void PID_autotune(const float temp, const int8_t hotend, const int8_t ncycles, const bool set_result=false);
+      static void PID_autotune(const float &target, const int8_t hotend, const int8_t ncycles, const bool set_result=false);
 
       /**
        * Update the temp manager when PID values change

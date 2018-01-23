@@ -56,6 +56,10 @@
   #include "mesh_bed_leveling.h"
 #endif
 
+#if ENABLED(FWRETRACT)
+  #include "fwretract.h"
+#endif
+
 #if ENABLED(AUTO_BED_LEVELING_UBL) || ENABLED(G26_MESH_VALIDATION)
   bool lcd_external_control; // = false
 #endif
@@ -200,6 +204,8 @@ uint16_t max_display_update_time = 0;
   #if ENABLED(ADVANCED_PAUSE_FEATURE)
     #if E_STEPPERS > 1 || ENABLED(FILAMENT_LOAD_UNLOAD_GCODES)
       void lcd_change_filament_menu();
+    #else
+      void lcd_temp_menu_e0_filament_change();
     #endif
     void lcd_advanced_pause_option_menu();
     void lcd_advanced_pause_init_message();
@@ -760,9 +766,10 @@ void kill_screen(const char* lcd_msg) {
     #endif
   }
 
-  void lcd_quick_feedback() {
+  void lcd_quick_feedback(const bool clear_buttons) {
     lcdDrawUpdate = LCDVIEW_CLEAR_CALL_REDRAW;
-    buttons = 0;
+    if (clear_buttons)
+      buttons = 0;
     next_button_update_ms = millis() + 500;
 
     // Buzz and wait. The delay is needed for buttons to settle!
@@ -1387,7 +1394,7 @@ void kill_screen(const char* lcd_msg) {
     //
     #if ENABLED(ADVANCED_PAUSE_FEATURE)
       #if E_STEPPERS == 1 && !ENABLED(FILAMENT_LOAD_UNLOAD_GCODES)
-        if (!thermalManager.targetTooColdToExtrude(active_extruder))
+        if (thermalManager.targetHotEnoughToExtrude(active_extruder))
           MENU_ITEM(gcode, MSG_FILAMENTCHANGE, PSTR("M600 B0"));
         else
           MENU_ITEM(submenu, MSG_FILAMENTCHANGE, lcd_temp_menu_e0_filament_change);
@@ -1680,9 +1687,15 @@ void kill_screen(const char* lcd_msg) {
      * If the queue is full, the command will fail, so we have to loop
      * with idle() to make sure the command has been enqueued.
      */
-    void lcd_enqueue_command_sram(char * const cmd) {
+    void lcd_enqueue_command(char * const cmd) {
       no_reentry = true;
-      while (enqueue_and_echo_command(cmd)) idle();
+      enqueue_and_echo_command_now(cmd);
+      no_reentry = false;
+    }
+
+    void lcd_enqueue_commands_P(const char * const cmd) {
+      no_reentry = true;
+      enqueue_and_echo_commands_P_now(cmd);
       no_reentry = false;
     }
 
@@ -2011,10 +2024,10 @@ void kill_screen(const char* lcd_msg) {
       enqueue_and_echo_commands_P(PSTR("G28"));
       #if HAS_TEMP_BED
         sprintf_P(UBL_LCD_GCODE, PSTR("M190 S%i"), custom_bed_temp);
-        lcd_enqueue_command_sram(UBL_LCD_GCODE);
+        lcd_enqueue_command(UBL_LCD_GCODE);
       #endif
       sprintf_P(UBL_LCD_GCODE, PSTR("M109 S%i"), custom_hotend_temp);
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
+      lcd_enqueue_command(UBL_LCD_GCODE);
       enqueue_and_echo_commands_P(PSTR("G29 P1"));
     }
 
@@ -2031,7 +2044,7 @@ void kill_screen(const char* lcd_msg) {
       MENU_BACK(MSG_UBL_BUILD_MESH_MENU);
       MENU_ITEM_EDIT(int3, MSG_UBL_CUSTOM_HOTEND_TEMP, &custom_hotend_temp, EXTRUDE_MINTEMP, (HEATER_0_MAXTEMP - 10));
       #if HAS_TEMP_BED
-        MENU_ITEM_EDIT(int3, MSG_UBL_CUSTOM_BED_TEMP, &custom_bed_temp, BED_MINTEMP, (BED_MAXTEMP - 5));
+        MENU_ITEM_EDIT(int3, MSG_UBL_CUSTOM_BED_TEMP, &custom_bed_temp, BED_MINTEMP, (BED_MAXTEMP - 15));
       #endif
       MENU_ITEM(function, MSG_UBL_BUILD_CUSTOM_MESH, _lcd_ubl_build_custom_mesh);
       END_MENU();
@@ -2045,7 +2058,7 @@ void kill_screen(const char* lcd_msg) {
       const int ind = ubl_height_amount > 0 ? 9 : 10;
       strcpy_P(UBL_LCD_GCODE, PSTR("G29 P6 C -"));
       sprintf_P(&UBL_LCD_GCODE[ind], PSTR(".%i"), abs(ubl_height_amount));
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
+      lcd_enqueue_command(UBL_LCD_GCODE);
     }
 
     /**
@@ -2096,8 +2109,8 @@ void kill_screen(const char* lcd_msg) {
         #endif
       ;
       sprintf_P(UBL_LCD_GCODE, PSTR("G26 C B%i H%i P"), temp, custom_hotend_temp);
-      lcd_enqueue_command_sram("G28");
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
+      lcd_enqueue_commands_P(PSTR("G28"));
+      lcd_enqueue_command(UBL_LCD_GCODE);
     }
 
     /**
@@ -2130,7 +2143,7 @@ void kill_screen(const char* lcd_msg) {
     void _lcd_ubl_grid_level_cmd() {
       char UBL_LCD_GCODE[10];
       sprintf_P(UBL_LCD_GCODE, PSTR("G29 J%i"), side_points);
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
+      lcd_enqueue_command(UBL_LCD_GCODE);
     }
 
     /**
@@ -2171,7 +2184,7 @@ void kill_screen(const char* lcd_msg) {
     void _lcd_ubl_fillin_amount_cmd() {
       char UBL_LCD_GCODE[16];
       sprintf_P(UBL_LCD_GCODE, PSTR("G29 P3 R C.%i"), ubl_fillin_amount);
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
+      lcd_enqueue_command(UBL_LCD_GCODE);
     }
 
     /**
@@ -2261,20 +2274,22 @@ void kill_screen(const char* lcd_msg) {
      * UBL Load Mesh Command
      */
     void _lcd_ubl_load_mesh_cmd() {
-      char UBL_LCD_GCODE[10];
+      char UBL_LCD_GCODE[25];
       sprintf_P(UBL_LCD_GCODE, PSTR("G29 L%i"), ubl_storage_slot);
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
-      enqueue_and_echo_commands_P(PSTR("M117 " MSG_MESH_LOADED "."));
+      lcd_enqueue_command(UBL_LCD_GCODE);
+      sprintf_P(UBL_LCD_GCODE, PSTR("M117 " MSG_MESH_LOADED), ubl_storage_slot);
+      lcd_enqueue_command(UBL_LCD_GCODE);
     }
 
     /**
      * UBL Save Mesh Command
      */
     void _lcd_ubl_save_mesh_cmd() {
-      char UBL_LCD_GCODE[10];
+      char UBL_LCD_GCODE[25];
       sprintf_P(UBL_LCD_GCODE, PSTR("G29 S%i"), ubl_storage_slot);
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
-      enqueue_and_echo_commands_P(PSTR("M117 " MSG_MESH_SAVED "."));
+      lcd_enqueue_command(UBL_LCD_GCODE);
+      sprintf_P(UBL_LCD_GCODE, PSTR("M117 " MSG_MESH_SAVED), ubl_storage_slot);
+      lcd_enqueue_command(UBL_LCD_GCODE);
     }
 
     /**
@@ -2291,7 +2306,6 @@ void kill_screen(const char* lcd_msg) {
       MENU_BACK(MSG_UBL_LEVEL_BED);
       if (!WITHIN(ubl_storage_slot, 0, a - 1)) {
         STATIC_ITEM(MSG_NO_STORAGE);
-        STATIC_ITEM(MSG_INIT_EEPROM);
       }
       else {
         MENU_ITEM_EDIT(int3, MSG_UBL_STORAGE_SLOT, &ubl_storage_slot, 0, a - 1);
@@ -2324,7 +2338,7 @@ void kill_screen(const char* lcd_msg) {
       dtostrf(pgm_read_float(&ubl._mesh_index_to_xpos[x_plot]), 0, 2, str);
       dtostrf(pgm_read_float(&ubl._mesh_index_to_ypos[y_plot]), 0, 2, str2);
       snprintf_P(UBL_LCD_GCODE, sizeof(UBL_LCD_GCODE), PSTR("G29 P4 X%s Y%s R%i"), str, str2, n_edit_pts);
-      lcd_enqueue_command_sram(UBL_LCD_GCODE);
+      lcd_enqueue_command(UBL_LCD_GCODE);
     }
 
     /**
@@ -2340,7 +2354,6 @@ void kill_screen(const char* lcd_msg) {
      * UBL LCD "radar" map
      */
     void set_current_from_steppers_for_axis(const AxisEnum axis);
-    void sync_plan_position();
 
     void _lcd_do_nothing() {}
     void _lcd_hard_stop() {
@@ -2586,7 +2599,7 @@ void kill_screen(const char* lcd_msg) {
     #if ENABLED(ADVANCED_PAUSE_FEATURE)
       if (!IS_SD_FILE_OPEN) {
         #if E_STEPPERS == 1 && !ENABLED(FILAMENT_LOAD_UNLOAD_GCODES)
-          if (!thermalManager.targetTooColdToExtrude(active_extruder))
+          if (thermalManager.targetHotEnoughToExtrude(active_extruder))
             MENU_ITEM(gcode, MSG_FILAMENTCHANGE, PSTR("M600 B0"));
           else
             MENU_ITEM(submenu, MSG_FILAMENTCHANGE, lcd_temp_menu_e0_filament_change);
@@ -3121,8 +3134,7 @@ void kill_screen(const char* lcd_msg) {
   #if ENABLED(EEPROM_SETTINGS)
 
     static void lcd_init_eeprom() {
-      lcd_factory_settings();
-      settings.save();
+      lcd_completion_feedback(settings.init_eeprom());
       lcd_goto_previous_menu();
     }
 
@@ -3205,7 +3217,7 @@ void kill_screen(const char* lcd_msg) {
           autotune_temp[e]
         #endif
       );
-      lcd_enqueue_command_sram(cmd);
+      lcd_enqueue_command(cmd);
     }
 
   #endif // PID_AUTOTUNE_MENU
@@ -3741,20 +3753,20 @@ void kill_screen(const char* lcd_msg) {
     void lcd_control_retract_menu() {
       START_MENU();
       MENU_BACK(MSG_CONTROL);
-      MENU_ITEM_EDIT(bool, MSG_AUTORETRACT, &autoretract_enabled);
-      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT, &retract_length, 0, 100);
+      MENU_ITEM_EDIT(bool, MSG_AUTORETRACT, &fwretract.autoretract_enabled);
+      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT, &fwretract.retract_length, 0, 100);
       #if EXTRUDERS > 1
-        MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_SWAP, &swap_retract_length, 0, 100);
+        MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_SWAP, &fwretract.swap_retract_length, 0, 100);
       #endif
-      MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACTF, &retract_feedrate_mm_s, 1, 999);
-      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_ZLIFT, &retract_zlift, 0, 999);
-      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_RECOVER, &retract_recover_length, -100, 100);
+      MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACTF, &fwretract.retract_feedrate_mm_s, 1, 999);
+      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_ZLIFT, &fwretract.retract_zlift, 0, 999);
+      MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_RECOVER, &fwretract.retract_recover_length, -100, 100);
       #if EXTRUDERS > 1
-        MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_RECOVER_SWAP, &swap_retract_recover_length, -100, 100);
+        MENU_ITEM_EDIT(float52, MSG_CONTROL_RETRACT_RECOVER_SWAP, &fwretract.swap_retract_recover_length, -100, 100);
       #endif
-      MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACT_RECOVERF, &retract_recover_feedrate_mm_s, 1, 999);
+      MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACT_RECOVERF, &fwretract.retract_recover_feedrate_mm_s, 1, 999);
       #if EXTRUDERS > 1
-        MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACT_RECOVER_SWAPF, &swap_retract_recover_feedrate_mm_s, 1, 999);
+        MENU_ITEM_EDIT(float3, MSG_CONTROL_RETRACT_RECOVER_SWAPF, &fwretract.swap_retract_recover_feedrate_mm_s, 1, 999);
       #endif
       END_MENU();
     }
@@ -4111,7 +4123,7 @@ void kill_screen(const char* lcd_msg) {
       char cmd[11];
       sprintf_P(cmd, _change_filament_temp_command(), _change_filament_temp_extruder);
       thermalManager.setTargetHotend(index == 1 ? PREHEAT_1_TEMP_HOTEND : PREHEAT_2_TEMP_HOTEND, _change_filament_temp_extruder);
-      lcd_enqueue_command_sram(cmd);
+      lcd_enqueue_command(cmd);
     }
     void _lcd_change_filament_temp_1_menu() { _change_filament_temp(1); }
     void _lcd_change_filament_temp_2_menu() { _change_filament_temp(2); }
@@ -4260,21 +4272,21 @@ void kill_screen(const char* lcd_msg) {
 
             // Unload filament
             #if E_STEPPERS == 1
-              if (!thermalManager.targetTooColdToExtrude(active_extruder))
+              if (thermalManager.targetHotEnoughToExtrude(active_extruder))
                 MENU_ITEM(gcode, MSG_FILAMENTUNLOAD, PSTR("M702"));
               else
                 MENU_ITEM(submenu, MSG_FILAMENTUNLOAD, lcd_temp_menu_e0_filament_unload);
             #else
               #if ENABLED(FILAMENT_UNLOAD_ALL_EXTRUDERS)
-                if (!thermalManager.targetTooColdToExtrude(0)
+                if (thermalManager.targetHotEnoughToExtrude(0)
                   #if E_STEPPERS > 1
-                    && !thermalManager.targetTooColdToExtrude(1)
+                    && thermalManager.targetHotEnoughToExtrude(1)
                     #if E_STEPPERS > 2
-                      && !thermalManager.targetTooColdToExtrude(2)
+                      && thermalManager.targetHotEnoughToExtrude(2)
                       #if E_STEPPERS > 3
-                        && !thermalManager.targetTooColdToExtrude(3)
+                        && thermalManager.targetHotEnoughToExtrude(3)
                         #if E_STEPPERS > 4
-                          && !thermalManager.targetTooColdToExtrude(4)
+                          && thermalManager.targetHotEnoughToExtrude(4)
                         #endif // E_STEPPERS > 4
                       #endif // E_STEPPERS > 3
                     #endif // E_STEPPERS > 2
@@ -4284,26 +4296,26 @@ void kill_screen(const char* lcd_msg) {
               else
                 MENU_ITEM(submenu, MSG_FILAMENTUNLOAD_ALL, lcd_unload_filament_all_temp_menu);
               #endif
-              if (!thermalManager.targetTooColdToExtrude(0))
+              if (thermalManager.targetHotEnoughToExtrude(0))
                 MENU_ITEM(gcode, MSG_FILAMENTUNLOAD " " MSG_E1, PSTR("M702 T0"));
               else
                 MENU_ITEM(submenu, MSG_FILAMENTUNLOAD " " MSG_E1, lcd_temp_menu_e0_filament_unload);
-              if (!thermalManager.targetTooColdToExtrude(1))
+              if (thermalManager.targetHotEnoughToExtrude(1))
                 MENU_ITEM(gcode, MSG_FILAMENTUNLOAD " " MSG_E2, PSTR("M702 T1"));
               else
                 MENU_ITEM(submenu, MSG_FILAMENTUNLOAD " " MSG_E2, lcd_temp_menu_e1_filament_unload);
               #if E_STEPPERS > 2
-                if (!thermalManager.targetTooColdToExtrude(2))
+                if (thermalManager.targetHotEnoughToExtrude(2))
                   MENU_ITEM(gcode, MSG_FILAMENTUNLOAD " " MSG_E3, PSTR("M702 T2"));
                 else
                   MENU_ITEM(submenu, MSG_FILAMENTUNLOAD " " MSG_E3, lcd_temp_menu_e2_filament_unload);
                 #if E_STEPPERS > 3
-                  if (!thermalManager.targetTooColdToExtrude(3))
+                  if (thermalManager.targetHotEnoughToExtrude(3))
                     MENU_ITEM(gcode, MSG_FILAMENTUNLOAD " " MSG_E4, PSTR("M702 T3"));
                   else
                     MENU_ITEM(submenu, MSG_FILAMENTUNLOAD " " MSG_E4, lcd_temp_menu_e3_filament_unload);
                   #if E_STEPPERS > 4
-                    if (!thermalManager.targetTooColdToExtrude(4))
+                    if (thermalManager.targetHotEnoughToExtrude(4))
                       MENU_ITEM(gcode, MSG_FILAMENTUNLOAD " " MSG_E5, PSTR("M702 T4"));
                     else
                       MENU_ITEM(submenu, MSG_FILAMENTUNLOAD " " MSG_E5, lcd_temp_menu_e4_filament_unload);
@@ -4528,6 +4540,24 @@ void kill_screen(const char* lcd_msg) {
       END_SCREEN();
     }
 
+    FORCE_INLINE screenFunc_t ap_message_screen(const AdvancedPauseMessage message) {
+      switch (message) {
+        case ADVANCED_PAUSE_MESSAGE_INIT: return lcd_advanced_pause_init_message;
+        case ADVANCED_PAUSE_MESSAGE_UNLOAD: return lcd_advanced_pause_unload_message;
+        case ADVANCED_PAUSE_MESSAGE_INSERT: return lcd_advanced_pause_insert_message;
+        case ADVANCED_PAUSE_MESSAGE_LOAD: return lcd_advanced_pause_load_message;
+        case ADVANCED_PAUSE_MESSAGE_PURGE: return lcd_advanced_pause_purge_message;
+        case ADVANCED_PAUSE_MESSAGE_RESUME: return lcd_advanced_pause_resume_message;
+        case ADVANCED_PAUSE_MESSAGE_CLICK_TO_HEAT_NOZZLE: return lcd_advanced_pause_heat_nozzle;
+        case ADVANCED_PAUSE_MESSAGE_WAIT_FOR_NOZZLES_TO_HEAT: return lcd_advanced_pause_wait_for_nozzles_to_heat;
+        case ADVANCED_PAUSE_MESSAGE_OPTION: advanced_pause_menu_response = ADVANCED_PAUSE_RESPONSE_WAIT_FOR;
+                                            return lcd_advanced_pause_option_menu;
+        case ADVANCED_PAUSE_MESSAGE_STATUS:
+        default: break;
+      }
+      return NULL;
+    }
+
     void lcd_advanced_pause_show_message(
       const AdvancedPauseMessage message,
       const AdvancedPauseMode mode/*=ADVANCED_PAUSE_MODE_PAUSE_PRINT*/,
@@ -4535,48 +4565,13 @@ void kill_screen(const char* lcd_msg) {
     ) {
       advanced_pause_mode = mode;
       hotend_status_extruder = extruder;
-      switch (message) {
-        case ADVANCED_PAUSE_MESSAGE_INIT:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_init_message);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_UNLOAD:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_unload_message);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_INSERT:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_insert_message);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_LOAD:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_load_message);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_PURGE:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_purge_message);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_CLICK_TO_HEAT_NOZZLE:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_heat_nozzle);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_WAIT_FOR_NOZZLES_TO_HEAT:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_wait_for_nozzles_to_heat);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_OPTION:
-          defer_return_to_status = true;
-          advanced_pause_menu_response = ADVANCED_PAUSE_RESPONSE_WAIT_FOR;
-          lcd_goto_screen(lcd_advanced_pause_option_menu);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_RESUME:
-          defer_return_to_status = true;
-          lcd_goto_screen(lcd_advanced_pause_resume_message);
-          break;
-        case ADVANCED_PAUSE_MESSAGE_STATUS:
-          lcd_return_to_status();
-          break;
+      const screenFunc_t next_screen = ap_message_screen(message);
+      if (next_screen) {
+        defer_return_to_status = true;
+        lcd_goto_screen(next_screen);
       }
+      else
+        lcd_return_to_status();
     }
 
   #endif // ADVANCED_PAUSE_FEATURE
@@ -4670,8 +4665,8 @@ void kill_screen(const char* lcd_msg) {
         if (encoderDirection == -1) { // side effect which signals we are inside a menu
           if      (buttons_reprapworld_keypad & EN_REPRAPWORLD_KEYPAD_DOWN)  encoderPosition -= ENCODER_STEPS_PER_MENU_ITEM;
           else if (buttons_reprapworld_keypad & EN_REPRAPWORLD_KEYPAD_UP)    encoderPosition += ENCODER_STEPS_PER_MENU_ITEM;
-          else if (buttons_reprapworld_keypad & EN_REPRAPWORLD_KEYPAD_LEFT)  { menu_action_back(); lcd_quick_feedback(); }
-          else if (buttons_reprapworld_keypad & EN_REPRAPWORLD_KEYPAD_RIGHT) { lcd_return_to_status(); lcd_quick_feedback(); }
+          else if (buttons_reprapworld_keypad & EN_REPRAPWORLD_KEYPAD_LEFT)  { menu_action_back(); lcd_quick_feedback(true); }
+          else if (buttons_reprapworld_keypad & EN_REPRAPWORLD_KEYPAD_RIGHT) { lcd_return_to_status(); lcd_quick_feedback(true); }
         }
         else {
           if (buttons_reprapworld_keypad & (EN_REPRAPWORLD_KEYPAD_DOWN|EN_REPRAPWORLD_KEYPAD_UP|EN_REPRAPWORLD_KEYPAD_RIGHT)) {
@@ -4939,7 +4934,7 @@ void lcd_update() {
         wait_for_unclick = true;         //  Set debounce flag to ignore continous clicks
         lcd_clicked = !wait_for_user && !no_reentry; //  Keep the click if not waiting for a user-click
         wait_for_user = false;           //  Any click clears wait for user
-        lcd_quick_feedback();            //  Always make a click sound
+        lcd_quick_feedback(true);        //  Always make a click sound
       }
     }
     else wait_for_unclick = false;
@@ -4951,6 +4946,7 @@ void lcd_update() {
     if (sd_status != lcd_sd_status && lcd_detected()) {
 
       if (sd_status) {
+        safe_delay(1000); // some boards need a delay or the LCD won't show the new status
         card.initsd();
         if (lcd_sd_status != 2) LCD_MESSAGEPGM(MSG_SD_INSERTED);
       }
@@ -5241,7 +5237,7 @@ void lcd_reset_alert_level() { lcd_status_message_level = 0; }
 
 #if HAS_LCD_CONTRAST
 
-  void set_lcd_contrast(const uint16_t value) {
+  void set_lcd_contrast(const int16_t value) {
     lcd_contrast = constrain(value, LCD_CONTRAST_MIN, LCD_CONTRAST_MAX);
     u8g.setContrast(lcd_contrast);
   }
