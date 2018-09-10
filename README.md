@@ -9,9 +9,17 @@ Marlin is an optimized firmware for [RepRap 3D printers](http://reprap.org/) bas
 
 ## Marlin 1.1.x
 
+<<<<<<< HEAD
 This 1.1.x Release Branch contains the latest tagged version of Marlin (currently 1.1.8 – December 2017).
 
 Marlin 1.1 represents an evolutionary leap over Marlin 1.0. It is the result of over two years of effort by several volunteers around the world who have paid meticulous and sometimes obsessive attention to every detail. We've focused on code quality, performance, stability, and overall user experience. Several new features have been added, many of which require no extra hardware.
+=======
+The 1.1.x branch is home to all tagged releases of Marlin 1.1 (final version 1.1.9 – August 2018).
+
+This branch will receive no further updates. All future development —including all bug fixes— will take place in the [`bugfix-2.0.x`](https://github.com/MarlinFirmware/Marlin/tree/bugfix-2.0.x) branch, which will also serve as the root for all future Marlin development. Be sure to test [`bugfix-2.0.x`](https://github.com/MarlinFirmware/Marlin/tree/bugfix-2.0.x) before reporting any bugs you find in 1.1.9.
+
+Marlin 1.1.9 is the final release of the 8-bit flat version of Marlin Firmware. A monumental amount of talent and effort has gone into its production, and thanks are due to many people around the world. Throughout Marlin 1.1 development we worked closely with the community, contributors, vendors, host developers, library developers, etc. to improve the quality, configurability, and compatibility of Marlin Firmware, all while continuing to support a wide variety of Arduino-based boards.
+>>>>>>> 7b594ee4a2feba8872d86efff16f414d93dc01c7
 
 ## Marlin 1.0.x
 

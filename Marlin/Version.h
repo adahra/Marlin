@@ -35,8 +35,12 @@
   /**
    * Marlin release version identifier
    */
+<<<<<<< HEAD
 
   #define SHORT_BUILD_VERSION "1.1.8"
+=======
+  #define SHORT_BUILD_VERSION "1.1.9"
+>>>>>>> 7b594ee4a2feba8872d86efff16f414d93dc01c7
 
   /**
    * Verbose version identifier which should contain a reference to the location
@@ -51,6 +55,7 @@
    */
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
   #define STRING_DISTRIBUTION_DATE "2017-12-15 12:00"
 =======
   #define STRING_DISTRIBUTION_DATE "2017-12-25 12:00"
@@ -58,6 +63,9 @@
 =======
   #define STRING_DISTRIBUTION_DATE "2017-12-25 12:00"
 >>>>>>> 0640bd028215a01ff9a01a46d4dcb859ba208a20
+=======
+  #define STRING_DISTRIBUTION_DATE "2018-08-01"
+>>>>>>> 7b594ee4a2feba8872d86efff16f414d93dc01c7
 
   /**
    * Required minimum Configuration.h and Configuration_adv.h file versions.
@@ -66,8 +74,8 @@
    * but not limited to: ADD, DELETE RENAME OR REPURPOSE any directive/option on
    * the configuration files.
    */
-  #define REQUIRED_CONFIGURATION_H_VERSION 010107
-  #define REQUIRED_CONFIGURATION_ADV_H_VERSION 010107
+  #define REQUIRED_CONFIGURATION_H_VERSION 010109
+  #define REQUIRED_CONFIGURATION_ADV_H_VERSION 010109
 
   /**
    * The protocol for communication to the host. Protocol indicates communication
